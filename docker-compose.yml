@@ -70,6 +70,9 @@ services:
         condition: service_started
     restart: unless-stopped
 
+    networks:
+      - dokploy-network
+
   chromadb:
     image: docker.io/chromadb/chroma:latest
     ports:
@@ -79,6 +82,8 @@ services:
     environment:
       - ANONYMIZED_TELEMETRY=FALSE
     restart: unless-stopped
+    networks:
+      - dokploy-network
 
   searxng:
     # Pinned, not :latest — odysseus waits on searxng's healthcheck
@@ -129,6 +134,8 @@ services:
       retries: 20
       start_period: 10s
     restart: unless-stopped
+    networks:
+      - dokploy-network
 
   ntfy:
     image: docker.io/binwiederhier/ntfy
@@ -140,8 +147,13 @@ services:
     environment:
       - NTFY_BASE_URL=${NTFY_BASE_URL:-http://localhost:8091}
     restart: unless-stopped
+    networks:
+      - dokploy-network
 
 volumes:
   searxng-data:
   chromadb-data:
   ntfy-cache:
+networks:
+  dokploy-network:
+    external: true
