@@ -1,13 +1,9 @@
 services:
   odysseus:
     build: .
-    # Eliminamos el mapeo de puertos porque Dokploy usa su proxy interno (Traefik)
-    # ports:
-    #   - "${APP_BIND:-127.0.0.1}:${APP_PORT:-7000}:7000"
     expose:
       - "7000"
     volumes:
-      # Cambiamos bind mounts (./data) por volúmenes Docker nombrados para persistencia
       - odysseus_data:/app/data
       - odysseus_logs:/app/logs
       - odysseus_ssh:/app/.ssh
@@ -19,7 +15,7 @@ services:
       - LLM_HOST=${LLM_HOST:-localhost}
       - LLM_HOSTS=${LLM_HOSTS:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - OLLAMA_BASE_URL=http://ollama:11434
       - RESEARCH_LLM_ENDPOINT=${RESEARCH_LLM_ENDPOINT:-}
       - HF_TOKEN=${HF_TOKEN:-}
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
@@ -27,30 +23,29 @@ services:
       - CHROMADB_HOST=chromadb
       - CHROMADB_PORT=8000
       - DATABASE_URL=${DATABASE_URL:-sqlite:///./data/app.db}
-      - AUTH_ENABLED=${AUTH_ENABLED:-true}
-      - LOCALHOST_BYPASS=${LOCALHOST_BYPASS:-false}
-      - ODYSSEUS_ADMIN_USER=${ODYSSEUS_ADMIN_USER:-admin}
-      - ODYSSEUS_ADMIN_PASSWORD=${ODYSSEUS_ADMIN_PASSWORD:-}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost,http://127.0.0.1}
-      - SECURE_COOKIES=${SECURE_COOKIES:-true}   # Cambiado a true porque usamos HTTPS
+      - AUTH_ENABLED=true
+      - LOCALHOST_BYPASS=false
+      - ODYSSEUS_ADMIN_USER=admin
+      - ODYSSEUS_ADMIN_PASSWORD=Nolose2880.-
+      - ALLOWED_ORIGINS=https://odin.arrietalabs.com,https://ia.arrietalabs.com
+      - SECURE_COOKIES=true
       - EMBEDDING_URL=${EMBEDDING_URL:-}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-}
       - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
-      - FASTEMBED_MODEL=${FASTEMBED_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
-      # Solución al error de FastEmbed: definimos la ruta de caché dentro del volumen persistente
+      - FASTEMBED_MODEL=sentence-transformers/all-MiniLM-L6-v2
       - FASTEMBED_CACHE_PATH=/app/data/fastembed_cache
-      - CLEANUP_INTERVAL_HOURS=${CLEANUP_INTERVAL_HOURS:-24}
-      - ODYSSEUS_INPROCESS_POLLERS=${ODYSSEUS_INPROCESS_POLLERS:-1}
-      - ODYSSEUS_INPROCESS_TASKS=${ODYSSEUS_INPROCESS_TASKS:-1}
-      - ODYSSEUS_SCRIPT_HOST=${ODYSSEUS_SCRIPT_HOST:-localhost}
-      - ODYSSEUS_CHAT_UPLOAD_MAX_BYTES=${ODYSSEUS_CHAT_UPLOAD_MAX_BYTES:-10485760}
+      - CLEANUP_INTERVAL_HOURS=24
+      - ODYSSEUS_INPROCESS_POLLERS=1
+      - ODYSSEUS_INPROCESS_TASKS=1
+      - ODYSSEUS_SCRIPT_HOST=localhost
+      - ODYSSEUS_CHAT_UPLOAD_MAX_BYTES=10485760
       - DATA_BRAVE_API_KEY=${DATA_BRAVE_API_KEY:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - GOOGLE_PSE_CX=${GOOGLE_PSE_CX:-}
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       - SERPER_API_KEY=${SERPER_API_KEY:-}
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      - PUID=1000
+      - PGID=1000
     depends_on:
       searxng:
         condition: service_healthy
@@ -59,7 +54,6 @@ services:
     restart: unless-stopped
     networks:
       - dokploy-network
-    # Etiquetas necesarias para que Traefik enrute el dominio
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.odysseus.rule=Host(`odin.arrietalabs.com`)"
@@ -69,9 +63,6 @@ services:
 
   chromadb:
     image: docker.io/chromadb/chroma:latest
-    # Eliminamos el puerto expuesto al host (Dokploy no necesita acceder externamente)
-    # ports:
-    #   - "${CHROMADB_BIND:-127.0.0.1}:8100:8000"
     volumes:
       - chromadb-data:/chroma/chroma
     environment:
@@ -81,29 +72,9 @@ services:
       - dokploy-network
 
   searxng:
-    # Mantenemos la misma imagen y configuración (sin bind mounts del host)
     image: docker.io/searxng/searxng:2026.5.31-7159b8aed
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        set -eu
-        if [ ! -s /etc/searxng/settings.yml ] || grep -q 'odysseus-local-searxng-json-2026-05-30\|__SEARXNG_SECRET__' /etc/searxng/settings.yml; then
-          secret="$${SEARXNG_SECRET:-}"
-          if [ -z "$$secret" ]; then
-            secret="$$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-          fi
-          # El template original está empaquetado en la imagen; lo copiamos a /tmp
-          cp /etc/searxng/settings.yml /tmp/searxng-settings.yml.template 2>/dev/null || echo "settings.yml not found, using default"
-          sed "s|__SEARXNG_SECRET__|$$secret|g" /tmp/searxng-settings.yml.template > /etc/searxng/settings.yml
-        fi
-        exec /usr/local/searxng/entrypoint.sh
-    # Eliminamos el puerto expuesto al host
-    # ports:
-    #   - "127.0.0.1:8080:8080"
     volumes:
       - searxng-data:/etc/searxng
-      # No usamos bind mount del archivo template; la imagen ya trae uno por defecto
     environment:
       - SEARXNG_BASE_URL=http://searxng:8080/
       - SEARXNG_SECRET=${SEARXNG_SECRET:-}
@@ -127,25 +98,20 @@ services:
   ntfy:
     image: docker.io/binwiederhier/ntfy
     command: serve
-    # Eliminamos el puerto expuesto al host
-    # ports:
-    #   - "${NTFY_BIND:-127.0.0.1}:8091:80"
     volumes:
       - ntfy-cache:/var/cache/ntfy
     environment:
-      - NTFY_BASE_URL=http://ntfy:80   # Comunicación interna por nombre de servicio
+      - NTFY_BASE_URL=http://ntfy:80
     restart: unless-stopped
     networks:
       - dokploy-network
 
 volumes:
-  # Volúmenes para Odysseus
   odysseus_data:
   odysseus_logs:
   odysseus_ssh:
   odysseus_huggingface:
   odysseus_local:
-  # Volúmenes para servicios auxiliares
   searxng-data:
   chromadb-data:
   ntfy-cache:
